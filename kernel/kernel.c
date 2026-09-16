@@ -24,6 +24,9 @@
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
+#include "thread.h"
+#include "mutex.h"
+#include "semaphore.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -35,7 +38,11 @@ static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
 static void cmd_ps(void);
+static void cmd_threads(void);
 static void cmd_kill(const char *args);
+static void cmd_race(void);
+static void cmd_race_lock(void);
+static void cmd_sem_demo(void);
 void idt_init(void);
 
 static void task_a(void) {
@@ -44,6 +51,63 @@ static void task_a(void) {
 
 static void task_b(void) {
     for (;;) __asm__ __volatile__("hlt");
+}
+
+static volatile int myglobal;
+static mutex_t race_mutex;
+static bool race_with_mutex;
+static semaphore_t sem_empty;
+static semaphore_t sem_full;
+static semaphore_t sem_mutex;
+static int sem_buffer[8];
+static int sem_in;
+static int sem_out;
+
+static void race_worker_a(void) {
+    for (int i = 0; i < 10000; i++) {
+        if (race_with_mutex) mutex_lock(&race_mutex);
+        myglobal++;
+        if (race_with_mutex) mutex_unlock(&race_mutex);
+    }
+    vga_printf("  thread A done: myglobal = %d\n", myglobal);
+    thread_exit();
+}
+
+static void race_worker_b(void) {
+    for (int i = 0; i < 10000; i++) {
+        if (race_with_mutex) mutex_lock(&race_mutex);
+        myglobal++;
+        if (race_with_mutex) mutex_unlock(&race_mutex);
+    }
+    vga_printf("  thread B done: myglobal = %d\n", myglobal);
+    thread_exit();
+}
+
+static void semaphore_producer(void) {
+    for (int value = 1; value <= 8; value++) {
+        sem_wait(&sem_empty);
+        sem_wait(&sem_mutex);
+        sem_buffer[sem_in] = value;
+        sem_in = (sem_in + 1) % 8;
+        sem_signal(&sem_mutex);
+        sem_signal(&sem_full);
+    }
+    vga_puts("  producer complete\n");
+    thread_exit();
+}
+
+static void semaphore_consumer(void) {
+    for (int i = 0; i < 8; i++) {
+        sem_wait(&sem_full);
+        sem_wait(&sem_mutex);
+        int value = sem_buffer[sem_out];
+        sem_out = (sem_out + 1) % 8;
+        sem_signal(&sem_mutex);
+        sem_signal(&sem_empty);
+        vga_printf("  consumed %d\n", value);
+    }
+    vga_puts("  consumer complete\n");
+    thread_exit();
 }
 static void cmd_version(void);
 static void cmd_colour(const char *args);
@@ -133,6 +197,9 @@ static void cmd_help(void) {
     vga_puts("  version – Show kernel version\n");
     vga_puts("  colour  – Set foreground and background colours\n");
     vga_puts("  halt    – Halt the CPU\n");
+    vga_puts("  race    – Run the unsynchronised counter demo\n");
+    vga_puts("  race-lock – Run the mutex-protected counter demo\n");
+    vga_puts("  sem-demo – Run the producer-consumer semaphore demo\n");
     vga_puts("  mem     – Memory map (stub)\n");
     vga_puts_color("\n  Milestones (to implement):\n", VGA_LIGHT_CYAN, VGA_BLACK);
     vga_puts("  ps      – [L09] List processes\n");
@@ -195,6 +262,34 @@ static void cmd_halt(void) {
     for (;;) __asm__ __volatile__("hlt");
 }
 
+static void cmd_race(void) {
+    myglobal = 0;
+    race_with_mutex = false;
+    thread_create(1, "race-a", race_worker_a);
+    thread_create(1, "race-b", race_worker_b);
+    vga_puts("  Race started without mutex.\n");
+}
+
+static void cmd_race_lock(void) {
+    myglobal = 0;
+    race_with_mutex = true;
+    mutex_init(&race_mutex);
+    thread_create(1, "locked-a", race_worker_a);
+    thread_create(1, "locked-b", race_worker_b);
+    vga_puts("  Race started with mutex; expected final value: 20000.\n");
+}
+
+static void cmd_sem_demo(void) {
+    sem_init(&sem_empty, 8);
+    sem_init(&sem_full, 0);
+    sem_init(&sem_mutex, 1);
+    sem_in = 0;
+    sem_out = 0;
+    thread_create(1, "producer", semaphore_producer);
+    thread_create(1, "consumer", semaphore_consumer);
+    vga_puts("  Producer-consumer semaphore demo started.\n");
+}
+
 static void cmd_mem(void) {
     /* Stage 0 stub – students implement the real PMM in Lecture 11 */
     vga_puts_color("\n  Memory Map (stub – implement PMM in Lecture 11)\n",
@@ -210,6 +305,16 @@ static void cmd_mem(void) {
 
 static void cmd_ps(void) {
     process_dump();
+}
+
+static void cmd_threads(void) {
+    vga_puts("\nTID PID NAME STATE\n");
+    for (int i = 0; i < MAX_THREADS; i++) {
+        if (thread_table[i].state == PROC_UNUSED) continue;
+        vga_printf("%u %u %s %u\n", thread_table[i].tid,
+                   thread_table[i].pid, thread_table[i].name,
+                   (uint32_t)thread_table[i].state);
+    }
 }
 
 static void cmd_kill(const char *args) {
@@ -267,6 +372,9 @@ static void shell_run(void) {
         if (k_strcmp(cmd, "halt") == 0) {
             cmd_halt();
         }
+        if (k_strcmp(cmd, "race") == 0) { cmd_race(); continue; }
+        if (k_strcmp(cmd, "race-lock") == 0) { cmd_race_lock(); continue; }
+        if (k_strcmp(cmd, "sem-demo") == 0) { cmd_sem_demo(); continue; }
 
         if (k_strncmp(cmd, "kill ", 5) == 0) {
             cmd_kill(k_ltrim(cmd + 5));
@@ -279,8 +387,11 @@ static void shell_run(void) {
         }
 
         /* Milestone stubs */
-        if (k_strcmp(cmd, "threads") == 0 ||
-            k_strcmp(cmd, "free")    == 0 ||
+        if (k_strcmp(cmd, "threads") == 0) {
+            cmd_threads();
+            continue;
+        }
+        if (k_strcmp(cmd, "free")    == 0 ||
             k_strcmp(cmd, "ls")      == 0 ||
             k_strcmp(cmd, "cat")     == 0) {
             vga_puts_color("  [TODO] This command is not yet implemented.\n",
@@ -302,6 +413,7 @@ void kernel_main(void) {
     vga_init();
     kb_init();
     process_init();
+    thread_init();
 
     /* The shell owns the boot stack; timer ticks will save it in PCB 0. */
     proc_create("shell", task_a);
