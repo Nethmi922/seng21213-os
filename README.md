@@ -1,4 +1,4 @@
-# SENG21213-OS — Stage 0: Kernel Foundations
+# SENG21213-OS — Five-Stage Minimal Operating System
 
 > **Course**: SENG 21213 – Computer Architecture & Operating Systems  
 > **Year**: 2nd Year, Software Engineering  
@@ -8,10 +8,10 @@
 
 ## What Is This?
 
-This is **Stage 0** of your semester-long OS assignment. Over 5 lecture milestones
-(Lectures 8–12), your team will transform this minimal kernel into a functioning
-operating system with process management, threading, memory management, and a
-file system.
+This repository contains the completed five-stage OS assignment. It starts with a
+BIOS-loaded 512-byte boot sector and grows into a small protected-mode operating
+system with scheduling, kernel threads, synchronization, physical memory
+management, and an inode-based RAM disk filesystem.
 
 ```
 seng21213-os/
@@ -46,7 +46,17 @@ seng21213-os/
 
 ## Quick Start
 
-### Option A: Docker (Recommended for all platforms)
+### Option A: Native Linux/WSL2 (Recommended)
+
+```bash
+# Ubuntu/Debian/WSL2
+sudo apt install nasm gcc gcc-multilib binutils qemu-system-x86 make
+make clean
+make all
+make run
+```
+
+### Option B: Docker
 
 ```bash
 # 1. Install Docker Desktop (Windows/Mac) or Docker Engine (Linux)
@@ -58,19 +68,6 @@ docker run --rm -v "$(pwd)":/os seng21213-os-builder
 
 # 4. Run in QEMU (install QEMU locally):
 qemu-system-i386 -drive format=raw,file=seng21213-os.img -m 32M
-```
-
-### Option B: Native Linux/WSL2
-
-```bash
-# Ubuntu/Debian
-sudo apt install nasm gcc gcc-multilib binutils qemu-system-x86 make
-
-# Build
-make all
-
-# Run
-make run
 ```
 
 ### Option C: macOS (Homebrew)
@@ -115,6 +112,35 @@ Your code from here...
 ```
 
 ---
+
+## Implemented Stages
+
+| Tag | Stage | Main features |
+|-----|-------|---------------|
+| `v0.1-stage0` | Boot and shell | Protected mode, VGA, PS/2 keyboard, shell |
+| `v0.2-stage1` | Scheduling | PCB table, IDT, PIC, PIT, round-robin switching |
+| `v0.3-stage2` | Concurrency | Kernel threads, atomic mutex, counting semaphore |
+| `v0.4-stage3` | Memory | E820 map detection, 4 KB bitmap frame allocator |
+| `v0.5-stage4` | Filesystem | 1 MB RAM disk, inode filesystem, file shell commands |
+
+## Stage 4 Verification
+
+After `make run`, execute these commands at the kernel prompt:
+
+```text
+ls
+touch readme
+write readme Hello from Stage 4
+cat readme
+ls
+rm readme
+ls
+```
+
+The expected sequence is zero files, creation, writing, displayed text, one
+file, removal, and zero files again. Stage 2 demonstrations are available as
+`threads`, `race`, `race-lock`, and `sem-demo`; Stage 3 memory usage is shown by
+`meminfo`.
 
 ## Building Lecture 9: Process Management
 
