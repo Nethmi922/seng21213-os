@@ -36,6 +36,15 @@ static void cmd_echo(const char *args);
 static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_kill(const char *args);
+void idt_init(void);
+
+static void task_a(void) {
+    for (;;) __asm__ __volatile__("hlt");
+}
+
+static void task_b(void) {
+    for (;;) __asm__ __volatile__("hlt");
+}
 static void cmd_version(void);
 static void cmd_colour(const char *args);
 static void cmd_halt(void);
@@ -294,9 +303,12 @@ void kernel_main(void) {
     kb_init();
     process_init();
 
-    /* Seed the process table with a single ready process */
-    pcb_t *idle = process_create((void (*)(void))0x0);
-    if (idle) idle->state = READY;
+    /* The shell owns the boot stack; timer ticks will save it in PCB 0. */
+    proc_create("shell", task_a);
+    proc_table[0].state = PROC_RUNNING;
+    proc_create("worker-a", task_a);
+    proc_create("worker-b", task_b);
+    idt_init();
 
     print_splash();
     shell_run();
