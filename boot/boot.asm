@@ -30,6 +30,8 @@ start:
     mov  si, msg_load
     call print_rm
 
+    call detect_memory
+
 ; ---------------------------------------------------------------------------
 ; Load kernel: read sectors 2..65 from disk into memory at 0x1000:0x0000
 ; This gives us 64 × 512 = 32 768 bytes for the kernel (Stage 0)
@@ -43,6 +45,35 @@ load_kernel:
 
     mov  si, msg_ok
     call print_rm
+    jmp  enter_pm
+
+; ---------------------------------------------------------------------------
+; Detect usable physical memory with BIOS E820 before protected mode.
+; Entry count is stored at 0x8000 and entries begin at 0x8004.
+; ---------------------------------------------------------------------------
+detect_memory:
+    xor  ax, ax
+    mov  es, ax
+    mov  di, 0x8004
+    xor  ebx, ebx
+    xor  bp, bp
+.next_entry:
+    mov  eax, 0xE820
+    mov  edx, 0x534D4150
+    mov  ecx, 24
+    int  0x15
+    jc   .done
+    cmp  eax, 0x534D4150
+    jne  .done
+    inc  bp
+    add  di, 24
+    cmp  bp, 32
+    jae  .done
+    test ebx, ebx
+    jnz  .next_entry
+.done:
+    mov  [0x8000], bp
+    ret
 
 ; ---------------------------------------------------------------------------
 ; Enter Protected Mode

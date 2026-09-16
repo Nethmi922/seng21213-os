@@ -27,6 +27,7 @@
 #include "thread.h"
 #include "mutex.h"
 #include "semaphore.h"
+#include "pmm.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -43,6 +44,7 @@ static void cmd_kill(const char *args);
 static void cmd_race(void);
 static void cmd_race_lock(void);
 static void cmd_sem_demo(void);
+static void cmd_meminfo(void);
 void idt_init(void);
 
 static void task_a(void) {
@@ -200,7 +202,7 @@ static void cmd_help(void) {
     vga_puts("  race    – Run the unsynchronised counter demo\n");
     vga_puts("  race-lock – Run the mutex-protected counter demo\n");
     vga_puts("  sem-demo – Run the producer-consumer semaphore demo\n");
-    vga_puts("  mem     – Memory map (stub)\n");
+    vga_puts("  meminfo – Show physical memory usage\n");
     vga_puts_color("\n  Milestones (to implement):\n", VGA_LIGHT_CYAN, VGA_BLACK);
     vga_puts("  ps      – [L09] List processes\n");
     vga_puts("  kill    – [L09] Terminate a process\n");
@@ -303,6 +305,15 @@ static void cmd_mem(void) {
                    VGA_YELLOW, VGA_BLACK);
 }
 
+static void cmd_meminfo(void) {
+    uint32_t total = pmm_total_frames();
+    uint32_t free = pmm_free_frames();
+    uint32_t used = total - free;
+    vga_printf("\n  Free: %u KB\n", (free * FRAME_SIZE) / 1024);
+    vga_printf("  Used: %u KB\n", (used * FRAME_SIZE) / 1024);
+    vga_printf("  Total: %u KB\n", (total * FRAME_SIZE) / 1024);
+}
+
 static void cmd_ps(void) {
     process_dump();
 }
@@ -361,6 +372,7 @@ static void shell_run(void) {
         if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
         if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
         if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
+        if (k_strcmp(cmd, "meminfo") == 0) { cmd_meminfo(); continue; }
         if (k_strcmp(cmd, "ps")    == 0) { cmd_ps();    continue; }
         if (k_strcmp(cmd, "version") == 0) { cmd_version(); continue; }
 
@@ -414,6 +426,7 @@ void kernel_main(void) {
     kb_init();
     process_init();
     thread_init();
+    pmm_init();
 
     /* The shell owns the boot stack; timer ticks will save it in PCB 0. */
     proc_create("shell", task_a);
