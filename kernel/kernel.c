@@ -422,6 +422,7 @@ static void shell_run(void) {
 
     while (true) {
         vga_puts_color(prompt, VGA_LIGHT_GREEN, VGA_BLACK);
+        __asm__ __volatile__("sti");
         kb_readline(shell_buf, sizeof(shell_buf));
 
         /* Trim leading whitespace */

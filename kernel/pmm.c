@@ -1,4 +1,5 @@
 #include "pmm.h"
+#include "ramdisk.h"
 
 #define MAX_FRAMES (PMM_LIMIT / FRAME_SIZE)
 #define BITMAP_WORDS (MAX_FRAMES / 32)
@@ -39,6 +40,8 @@ void pmm_init(void) {
 
         for (uint64_t address = first; address < region_end; address += FRAME_SIZE) {
             uint32_t frame = (uint32_t)(address / FRAME_SIZE);
+            if (address >= RAMDISK_BASE && address < RAMDISK_BASE + RAMDISK_SIZE)
+                continue;
             if (frame_used(frame)) {
                 frame_clear(frame);
                 free_frame_count++;

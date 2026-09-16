@@ -56,5 +56,4 @@ void idt_init(void) {
 
     idt_ptr_t pointer = {(uint16_t)(sizeof(idt) - 1), (uint32_t)idt};
     __asm__ __volatile__("lidtl %0" : : "m"(pointer));
-    __asm__ __volatile__("sti");
 }

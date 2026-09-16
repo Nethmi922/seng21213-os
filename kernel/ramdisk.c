@@ -1,6 +1,6 @@
 #include "ramdisk.h"
 
-static uint8_t ramdisk[RAMDISK_SIZE];
+static volatile uint8_t *const ramdisk = (volatile uint8_t *)RAMDISK_BASE;
 
 void ramdisk_init(void) {
     for (uint32_t i = 0; i < RAMDISK_SIZE; i++) ramdisk[i] = 0;
