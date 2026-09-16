@@ -4,7 +4,7 @@
 #define BITMAP_WORDS (MAX_FRAMES / 32)
 #define E820_COUNT ((volatile uint16_t *)0x8000)
 #define E820_MAP ((volatile e820_entry_t *)0x8004)
-#define KERNEL_END 0x20000
+#define KERNEL_END 0x140000
 
 static uint32_t frame_bitmap[BITMAP_WORDS];
 static uint32_t free_frame_count;

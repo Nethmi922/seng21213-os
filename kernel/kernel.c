@@ -28,6 +28,7 @@
 #include "mutex.h"
 #include "semaphore.h"
 #include "pmm.h"
+#include "fs.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -45,6 +46,11 @@ static void cmd_race(void);
 static void cmd_race_lock(void);
 static void cmd_sem_demo(void);
 static void cmd_meminfo(void);
+static void cmd_ls(void);
+static void cmd_touch(const char *args);
+static void cmd_cat(const char *args);
+static void cmd_write(const char *args);
+static void cmd_rm(const char *args);
 void idt_init(void);
 
 static void task_a(void) {
@@ -208,8 +214,11 @@ static void cmd_help(void) {
     vga_puts("  kill    – [L09] Terminate a process\n");
     vga_puts("  threads – [L10] List kernel threads\n");
     vga_puts("  free    – [L11] Show free memory\n");
-    vga_puts("  ls      – [L12] List files\n");
-    vga_puts("  cat     – [L12] Print file contents\n\n");
+    vga_puts("  ls      – List files\n");
+    vga_puts("  touch   – Create an empty file\n");
+    vga_puts("  cat     – Print file contents\n");
+    vga_puts("  write   – Write text to a file\n");
+    vga_puts("  rm      – Remove a file\n\n");
 }
 
 static void cmd_clear(void) {
@@ -314,6 +323,58 @@ static void cmd_meminfo(void) {
     vga_printf("  Total: %u KB\n", (total * FRAME_SIZE) / 1024);
 }
 
+static void cmd_ls(void) {
+    inode_t entries[16];
+    int count = fs_ls(entries, 16);
+    vga_puts("\nNAME SIZE\n");
+    for (int i = 0; i < count; i++)
+        vga_printf("%s %u\n", entries[i].name, entries[i].size);
+    vga_printf("%d file(s)\n", count);
+}
+
+static void cmd_touch(const char *args) {
+    args = k_ltrim(args);
+    int fd = fs_open(args, O_WRONLY | O_CREAT);
+    if (fd < 0) vga_puts("  Cannot create file.\n");
+    else { fs_close(fd); vga_puts("  File created.\n"); }
+}
+
+static void cmd_cat(const char *args) {
+    char buffer[512];
+    int fd = fs_open(k_ltrim(args), O_RDONLY);
+    if (fd < 0) { vga_puts("  File not found.\n"); return; }
+    int count = fs_read(fd, buffer, sizeof(buffer) - 1);
+    fs_close(fd);
+    if (count < 0) { vga_puts("  Read failed.\n"); return; }
+    buffer[count] = '\0';
+    vga_puts(buffer);
+    vga_puts("\n");
+}
+
+static void cmd_write(const char *args) {
+    char filename[28];
+    int index = 0;
+    args = k_ltrim(args);
+    while (*args && *args != ' ' && index < 27) filename[index++] = *args++;
+    filename[index] = '\0';
+    args = k_ltrim(args);
+    if (index == 0 || *args == '\0') {
+        vga_puts("  Usage: write <file> <text>\n");
+        return;
+    }
+    int fd = fs_open(filename, O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd < 0) { vga_puts("  Cannot open file.\n"); return; }
+    int written = fs_write(fd, args, (int)k_strlen(args));
+    fs_close(fd);
+    if (written < 0) vga_puts("  Write failed.\n");
+    else vga_puts("  File written.\n");
+}
+
+static void cmd_rm(const char *args) {
+    if (fs_unlink(k_ltrim(args)) < 0) vga_puts("  File not found.\n");
+    else vga_puts("  File removed.\n");
+}
+
 static void cmd_ps(void) {
     process_dump();
 }
@@ -398,14 +459,18 @@ static void shell_run(void) {
             continue;
         }
 
-        /* Milestone stubs */
+        if (k_strcmp(cmd, "ls") == 0) { cmd_ls(); continue; }
+        if (k_strncmp(cmd, "touch ", 6) == 0) { cmd_touch(cmd + 6); continue; }
+        if (k_strncmp(cmd, "cat ", 4) == 0) { cmd_cat(cmd + 4); continue; }
+        if (k_strncmp(cmd, "write ", 6) == 0) { cmd_write(cmd + 6); continue; }
+        if (k_strncmp(cmd, "rm ", 3) == 0) { cmd_rm(cmd + 3); continue; }
+
+        /* Remaining milestone stubs */
         if (k_strcmp(cmd, "threads") == 0) {
             cmd_threads();
             continue;
         }
-        if (k_strcmp(cmd, "free")    == 0 ||
-            k_strcmp(cmd, "ls")      == 0 ||
-            k_strcmp(cmd, "cat")     == 0) {
+        if (k_strcmp(cmd, "free") == 0) {
             vga_puts_color("  [TODO] This command is not yet implemented.\n",
                            VGA_YELLOW, VGA_BLACK);
             vga_puts("  Implement it as part of your lecture assignment.\n");
@@ -427,6 +492,7 @@ void kernel_main(void) {
     process_init();
     thread_init();
     pmm_init();
+    fs_init();
 
     /* The shell owns the boot stack; timer ticks will save it in PCB 0. */
     proc_create("shell", task_a);
